@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.0;
+pragma solidity ^0.8.0;
 
 import "./interfaces/IBEP20.sol";
 import "./interfaces/IBEP20Metadata.sol";
@@ -40,10 +40,11 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     mapping (address => uint256) private _tOwned;
     mapping (address => mapping (address => uint256)) private _allowances;
     mapping (address => bool) private _isExcluded;
+    mapping (address => bool) private _isIncluded;
     address[] private _excluded;
    
     uint256 private constant MAX = ~uint256(0);
-    uint256 private _tTotal = 1,000,000,000 * 10**9;
+    uint256 private _tTotal = 1000000000 * 10**9;
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
@@ -51,16 +52,21 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     string private constant _symbol = "BRICKS";
     uint8 private constant _decimals = 9;
 
-    string private constant _teamWallet = "0xFD47B53abCc4e1819219F9694E44CfB62bBe6972";
-    string private constant _devWallet = "0x8780963707dD6039A0d75cE938385D9E6B37eFa8";
 
     uint256 public taxFeeDev = 2;
+    uint256 private previousDevTaxFee = taxFeeDev;
     uint256 public taxFeeTeam = 2;
+    uint256 private previousTeamTaxFee = taxFeeTeam;
+    uint public walletType;
+    address public teamWallet;
+    address public devWallet;
     
     uint256 public taxFee = 2;
     uint256 private previousTaxFee = taxFee;
 
     bool public enableFee;
+
+    bool public enableAntiwale;
  
     uint256 private _amount_burnt;
 
@@ -68,11 +74,16 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     event SetMaxTxPercent(uint256 maxPercent);
     event SetTaxFeePercent(uint256 taxFeePercent);
     event ExternalTokenTransfered(address externalAddress,address toAddress, uint amount);
+    event enableAntiWale(bool enableAntiwale);
 
-    constructor () {
+    constructor (address wallet1, address wallet2) {
         _rOwned[_msgSender()] = _rTotal;
-        emit Transfer(address(0), _msgSender(), _tTotal);     
+        emit Transfer(address(0), _msgSender(), _tTotal);  
+         teamWallet = wallet1;
+         devWallet = wallet2;
+
     }
+
 
     /**
      * @dev Returns the name of the token.
@@ -263,6 +274,11 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         emit FeeEnable(enableTax);
     }
 
+     function setAntiwale(bool enableWale) external onlyOwner {
+        enableAntiwale = enableWale;
+        emit enableAntiWale(enableWale);
+    }
+
     function takeReflectionFee(uint256 rFee, uint256 tFee) internal {
         _rTotal = _rTotal.sub(rFee);
         _tFeeTotal = _tFeeTotal.add(tFee);
@@ -272,9 +288,7 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         uint256 tAmount = amount;
         uint256 tFee = calculateTaxFee(tAmount);
         uint256 tFeeDev = calculateDevTaxFee(tAmount);
-        takeTFeeDev(tFeeDev);
         uint256 tFeeTeam = calculateTeamTaxFee(tAmount);
-        takeTFeeTeam(tFeeTeam);
         uint256 tTransferAmount = tAmount.sub(tFee).sub(tFeeDev).sub(tFeeTeam);
         return (tTransferAmount, tFee, tFeeDev, tFeeTeam);
     }
@@ -285,9 +299,7 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         uint256 rAmount = tAmount.mul(currentRate);
         uint256 rFee = tFee.mul(currentRate);
         uint256 rFeeDev = tFeeDev.mul(currentRate);
-        takeRFeeDev(rFeeDev);
         uint256 rFeeTeam = tFeeTeam.mul(currentRate);
-        takeRFeeTeam(rFeeTeam);
         uint256 rTransferAmount = rAmount.sub(rFee).sub(rFeeDev).sub(rFeeTeam);
         return (rAmount, rTransferAmount, rFee, rFeeDev, rFeeTeam);
     }
@@ -327,6 +339,9 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         );
     }
     
+     /**
+       remove tax fee and set it to previous tax fee
+     */
     function removeAllFee() internal {
         if(taxFee == 0) return;
         
@@ -334,9 +349,36 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         
         taxFee = 0;
     }
- 
+
+     /**
+       remove dev fee and set it to previous dev tax fee
+     */
+    function removeDevFee() internal {
+         if(taxFeeDev == 0) return;
+        
+        previousDevTaxFee = taxFeeDev;
+        
+        taxFeeDev = 0;
+    }
+
+    /**
+       remove team fee and set it to previous team tax fee
+     */
+    function removeTeamFee() internal {
+       if(taxFeeTeam == 0) return;
+        
+        previousTeamTaxFee = taxFeeTeam;
+        
+        taxFeeTeam = 0;
+    }
+
+    /**
+        restore all fee (i.e) taxfee,devfee,teamfee
+     */
     function restoreAllFee() internal {
         taxFee = previousTaxFee;
+        taxFeeDev = previousDevTaxFee;
+        taxFeeTeam = previousTeamTaxFee;
     }
 
     /**
@@ -382,6 +424,9 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         require(from != address(0), "ERC20: transfer from the zero address");
         require(to != address(0), "ERC20: transfer to the zero address");
         require(amount > 0, "Transfer amount must be greater than zero");
+         if(enableAntiwale){
+             require(amount < 20000000 , "Transfer amount should not be greater than 20000000");
+         }
         
         _beforeTokenTransfer(from, to);
         
@@ -403,8 +448,11 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
 
     //this method is responsible for taking all fee, if takeFee is true
     function _tokenTransfer(address sender, address recipient, uint256 amount,bool takeFee) internal {
-        if(!takeFee)
+        if(!takeFee){
             removeAllFee();
+            removeDevFee();
+            removeTeamFee();
+        }
         
         if (_isExcluded[sender] && !_isExcluded[recipient]) {
             _transferFromExcluded(sender, recipient, amount);
@@ -427,38 +475,41 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);
         takeReflectionFee(rFee, tFee);
-        takeDevTax
+        takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
         emit Transfer(sender, recipient, tTransferAmount);
     }
     
     function _transferBothExcluded(address sender, address recipient, uint256 tAmount) internal {
-        (uint256 tTransferAmount, uint256 tFee) = getTValues(tAmount);
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee) = getRValues(tAmount, tFee);
+        (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam) = getTValues(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam);
         _tOwned[sender] = _tOwned[sender].sub(tAmount);
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _tOwned[recipient] = _tOwned[recipient].add(tTransferAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);        
         takeReflectionFee(rFee, tFee);
+         takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
         emit Transfer(sender, recipient, tTransferAmount);
     }
     
     function _transferToExcluded(address sender, address recipient, uint256 tAmount) internal {
-        (uint256 tTransferAmount, uint256 tFee) = getTValues(tAmount);
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee) = getRValues(tAmount, tFee);
+        (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam) = getTValues(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam);
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _tOwned[recipient] = _tOwned[recipient].add(tTransferAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);           
         takeReflectionFee(rFee, tFee);
+         takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
         emit Transfer(sender, recipient, tTransferAmount);
     }
 
     function _transferFromExcluded(address sender, address recipient, uint256 tAmount) internal {
-        (uint256 tTransferAmount, uint256 tFee) = getTValues(tAmount);
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee) = getRValues(tAmount, tFee);
+         (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam) = getTValues(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam);
         _tOwned[sender] = _tOwned[sender].sub(tAmount);
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);   
         takeReflectionFee(rFee, tFee);
+         takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
         emit Transfer(sender, recipient, tTransferAmount);
     }
 
@@ -486,23 +537,62 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     function _beforeTokenTransfer(address from, address to) internal virtual { 
     }
 
-    function takeTFeeDev(uint256 tFeeDev){
-
-        emit Transfer(sender, recipient, tTransferAmount);
-    }
-
-    function takeTFeeTeam(uint256 tFeeTeam){
-
-        emit Transfer(sender, recipient, tTransferAmount);
-    }
-
-    function takeRFeeDev(uint256 rFeeDev){
-
-        emit Transfer(sender, recipient, tTransferAmount);
-    }
-
-    function takeRFeeTeam(uint256 rFeeDev){
+    /**
+       update dev wallet as per redistribution status
+     */
+    function takeFeeDev(uint256 tFeeDev) internal {
+        if(walletType == 1){
+            _rOwned[devWallet] = _rOwned[devWallet].add(tFeeDev); 
+        }else{
+            _tOwned[devWallet] = _tOwned[devWallet].add(tFeeDev);
+            _rOwned[devWallet] = _rOwned[devWallet].add(tFeeDev); 
+        }
         
-        emit Transfer(sender, recipient, tTransferAmount);
     }
+
+    /**
+       update team wallet as per redistribution status
+     */
+    function takeFeeTeam(uint256 tFeeTeam) internal {
+
+        if(walletType == 1){
+            _rOwned[teamWallet] = _rOwned[teamWallet].add(tFeeTeam); 
+        }else{
+            _tOwned[teamWallet] = _tOwned[teamWallet].add(tFeeTeam);
+            _rOwned[teamWallet] = _rOwned[teamWallet].add(tFeeTeam); 
+        }
+    }
+
+    /**
+       Take dev fee and team fee if dev and team address participate in redistribution
+       update balance in _rOwned orelse update in _tOwned
+     */
+    function takeFeeDevTeam(uint256 tFeeDev,uint256 rFeeDev,uint256 tFeeTeam,uint256 rFeeTeam) internal {
+
+        // Update in DevWallet
+        if(!_isExcluded[devWallet]){
+            // wallet present in re-distribution update in rOwned
+             walletType = 1;
+             takeFeeDev(rFeeDev);
+        }else{
+            // update in tOwned
+            walletType = 2;
+            takeFeeDev(tFeeDev);
+            // update in rOwned
+            walletType = 1;
+            takeFeeDev(rFeeDev);
+        }
+         // Update in TeamWallet
+        if(!_isExcluded[teamWallet]){
+            walletType = 1;
+            takeFeeTeam(rFeeTeam);
+        }else{
+            walletType = 2;
+            takeFeeTeam(tFeeTeam);
+            walletType = 1;
+            takeFeeTeam(rFeeTeam);
+        }
+
+    }
+
 }
