@@ -425,7 +425,7 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         require(to != address(0), "ERC20: transfer to the zero address");
         require(amount > 0, "Transfer amount must be greater than zero");
          if(enableAntiwale){
-             require(amount < 20000000 , "Transfer amount should not be greater than 20000000");
+             require(amount < 20000000 * 10 ** 9 , "Transfer amount should not be greater than 20000000");
          }
         
         _beforeTokenTransfer(from, to);
