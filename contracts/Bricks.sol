@@ -340,35 +340,18 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     }
     
      /**
-       remove tax fee and set it to previous tax fee
+       remove tax fee,dev tax fee,team tax fee and set it to previous tax fee's
      */
     function removeAllFee() internal {
-        if(taxFee == 0) return;
+        if((taxFee == 0) && (taxFeeDev == 0) && (taxFeeTeam == 0)) return;
         
         previousTaxFee = taxFee;
-        
         taxFee = 0;
-    }
 
-     /**
-       remove dev fee and set it to previous dev tax fee
-     */
-    function removeDevFee() internal {
-         if(taxFeeDev == 0) return;
-        
         previousDevTaxFee = taxFeeDev;
-        
         taxFeeDev = 0;
-    }
 
-    /**
-       remove team fee and set it to previous team tax fee
-     */
-    function removeTeamFee() internal {
-       if(taxFeeTeam == 0) return;
-        
         previousTeamTaxFee = taxFeeTeam;
-        
         taxFeeTeam = 0;
     }
 
@@ -421,8 +404,8 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         address to,
         uint256 amount
     ) internal {
-        require(from != address(0), "ERC20: transfer from the zero address");
-        require(to != address(0), "ERC20: transfer to the zero address");
+        require(from != address(0), "BEP20: transfer from the zero address");
+        require(to != address(0), "BEP20: transfer to the zero address");
         require(amount > 0, "Transfer amount must be greater than zero");
          if(enableAntiwale){
              require(amount < 20000000 * 10 ** 9 , "Transfer amount should not be greater than 20000000");
@@ -431,7 +414,7 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         _beforeTokenTransfer(from, to);
         
         uint256 senderBalance = balanceOf(from);
-        require(senderBalance >= amount, "ERC20: transfer amount exceeds balance");
+        require(senderBalance >= amount, "BEP20: transfer amount exceeds balance");
 
         //indicates if fee should be deducted from transfer
         bool takeFee = true;
@@ -450,8 +433,6 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     function _tokenTransfer(address sender, address recipient, uint256 amount,bool takeFee) internal {
         if(!takeFee){
             removeAllFee();
-            removeDevFee();
-            removeTeamFee();
         }
         
         if (_isExcluded[sender] && !_isExcluded[recipient]) {
