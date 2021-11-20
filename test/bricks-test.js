@@ -12,7 +12,7 @@ contract('Bricks',accounts => {
 
     beforeEach(async () => {
         bricks = await Bricks.deployed();
-    })
+    });
 
     describe('Fee Section',()=>{
 
@@ -22,10 +22,10 @@ contract('Bricks',accounts => {
                 let fee = await bricks.setEnableFee(enableTax,{from: recipient});
                 truffleAssert.eventEmitted(fee,'EnableFee', async(ev) =>{
                     return ev.enableTax = enableTax;
-                })
+                });
             }catch(err){
                 // console.log('error response',err);
-                const errorMessage = "Ownable: caller is not the owner"
+                const errorMessage = "Ownable: caller is not the owner";
                 assert.equal(err.reason, errorMessage, "Fee Should be Enabled by owner");
             }
         });
@@ -34,76 +34,83 @@ contract('Bricks',accounts => {
             const enableTax = true;
             let fee = await bricks.setEnableFee(enableTax,{from: sender});
             assert.equal(fee.receipt.status, enableTax, "Fee Should be Enabled by owner");
-        })
+        });
 
         it('No tax after disable fee (Including Development & Team Wallet)', async () => {
             const enableTax = false;
             const amount = 100 * 10 ** 9;
             const txAmount = amount.toString();
             await bricks.setEnableFee(enableTax,{from: sender});
-            let transfer = await bricks.transfer(recipient,txAmount,{from:sender})
+            let transfer = await bricks.transfer(recipient,txAmount,{from:sender});
             truffleAssert.eventEmitted(transfer,'Transfer', async(ev) =>{
                 assert.equal(txAmount, ev.value, "Recipient got full amount without tax");
                 return ev.from == sender
                 && ev.to == recipient
                 && ev.value == txAmount;
-            })
-        })
+            });
+        });
 
 
         it('Enable fee', async () => {
             const enableTax = true;
             let fee = await bricks.setEnableFee(enableTax,{from: sender});
             assert.equal(fee.receipt.status, enableTax, "Enabling all fee's");
-        })
+        });
 
         it('Tax applies if fee enabled (Including Development & Team Wallet)', async () => {
             const enableTax = true;
             let beforeTxBalance;
             let afterTxBalance;
-            const amount = toString(100 * 10 ** 9);
+            const amount = 100 * 10 ** 9;
             const txAmount = amount.toString();
-            const expectedAmount = toString(94 * 10 ** 9);
+            const expectedAmount = 94 * 10 ** 9;
             const expectedTxAmount = expectedAmount.toString();
 
             await bricks.setEnableFee(enableTax,{from: sender});
 
             // Before transaction balance checking for recipient.
             beforeTxBalance = await bricks.balanceOf(recipient);
+            let beforeTxWalletBalance = beforeTxBalance.toString();
 
-            let transfer = await bricks.transfer(recipient,txAmount,{from:sender})
+            let transfer = await bricks.transfer(recipient,txAmount,{from:sender});
             truffleAssert.eventEmitted(transfer,'Transfer', async(ev) =>{
                 // return ev.from == sender
                 // && ev.to == recipient
                 // && ev.value == expectedTxAmount;
                 assert.equal(expectedTxAmount, ev.value, "Recipient got amount with tax");
-            })
+            });
 
             // After transaction recipient account should take redistribution,development,team taxes.
             afterTxBalance = await bricks.balanceOf(recipient);
-            assert.isAbove(afterTxBalance,beforeTxBalance,'Is Balance is updating or not');
-        })
+            let afterTxWalletBalance = afterTxBalance.toString();
+
+            assert.isAbove(Number(afterTxWalletBalance),Number(beforeTxWalletBalance),'Is Balance is updating or not');
+        });
 
         it('Balance Updating while new transaction', async () => {
             let beforeTxBalance;
             let afterTxBalance;
             const amount = 100 * 10 ** 9;
             const txAmount = amount.toString();
+            const enableTax = false;
+            await bricks.setEnableFee(enableTax,{from: sender});
             // Before transaction balance checking for recipient.
             beforeTxBalance = await bricks.balanceOf(recipient);
+            let beforeTxWalletBalance = beforeTxBalance.toString();
 
             // Transfer
-            let transfer = await bricks.transfer(recipient,txAmount,{from:sender})
+            let transfer = await bricks.transfer(recipient,txAmount,{from:sender});
             truffleAssert.eventEmitted(transfer,'Transfer', async(ev) =>{
-                assert.equal(txAmount, ev.value, "Transfer Successfully");
-            })
+                assert.equal(txAmount, ev.value.toString(), "Transfer Successfully");
+            });
 
              // After transaction recipient account should take redistribution,development,team taxes.
              afterTxBalance = await bricks.balanceOf(recipient);
-             assert.isAtLeast(afterTxBalance,beforeTxBalance,'Balance Increase while transfer');
-        })
+             let afterTxWalletBalance = afterTxBalance.toString();
+             assert.isAtLeast(Number(afterTxWalletBalance),Number(beforeTxWalletBalance),'Balance Increase while transfer');
+        });
 
-    })
+    });
 
     describe('AntiWhale Section', () => {
 
@@ -113,19 +120,19 @@ contract('Bricks',accounts => {
                 let antiwale = await bricks.setAntiwale(antiWhale,{from: recipient});
                 truffleAssert.eventEmitted(antiwale,'Enable antiWhale from non-owner ', async(ev) =>{
                     return ev.enableAntiwale = antiWhale;
-                })
+                });
             }catch(err){
-                const errorMessage = "Ownable: caller is not the owner"
+                const errorMessage = "Ownable: caller is not the owner";
                 assert.equal(err.reason, errorMessage, "Anti Whale Should be Enabled by owner");
             }
-        })
+        });
 
         it('Enable/Disable Antiwhale from owner', async () => {
             const antiWhale = true;
             let fee = await bricks.setAntiwale(antiWhale,{from: sender});
             assert.equal(fee.receipt.status, antiWhale, "Enabling anti whale by owner");
 
-        })
+        });
 
         it('If AntiWhale enable need to restrict bulk transfer limit as 20000000', async () => {
             const antiWhale = true;
@@ -133,32 +140,33 @@ contract('Bricks',accounts => {
             const txAmount = transferAmount.toString();
             try{
               // Transfer
-              let transfer = await bricks.transfer(recipient,txAmount,{from:sender})
+              let transfer = await bricks.transfer(recipient,txAmount,{from:sender});
               truffleAssert.eventEmitted(transfer,'Transfer', async(ev) =>{
                 return ev.from == sender
                 && ev.to == recipient
-                && ev.value == txAmount;
-              })
+                && ev.value.toString() == txAmount;
+              });
             }catch(err){
                 const errorMessage = "Transfer amount should not be greater than 20000000";
                 assert.equal(err.reason, errorMessage, "AntiWhale Restricts this much amount While Enable");
             }
-        })
+        });
 
         it('if antiwale is disabled sender able to transfer above the limit (20000000) also possible', async () => {
 
             const antiWhale = false;
+            let fee = await bricks.setAntiwale(antiWhale,{from: sender});
             const transferAmount = 20000000 * 10 ** 9;
             const txAmount = transferAmount.toString();
               // Transfer
-              let transfer = await bricks.transfer(recipient,txAmount,{from:sender})
+              let transfer = await bricks.transfer(recipient,txAmount,{from:sender});
               truffleAssert.eventEmitted(transfer,'Transfer', async(ev) =>{
                 assert.equal(ev.value, txAmount, "AntiWhale does'nt restricts this much amount because disabled");
                 return ev.from == sender
                 && ev.to == recipient
                 && ev.value == txAmount;
-              })
-        })
+              });
+        });
 
-    })
-})
+    });
+});
