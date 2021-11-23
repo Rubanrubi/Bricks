@@ -611,14 +611,14 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         uint256 contractTokenBalance = balanceOf(address(this));
         bool overMaxTokenBalance = contractTokenBalance >= maxContractWalletAmount;
 
-        if(overMaxTokenBalance){
+        if(overMaxTokenBalance && from != uniswapV2Pair){
             if(enableFee){
-                takeFee = false;
+                enableFee = false;
                 taxDisableInLiquidity = true;
             }
             swapAndLiquify(contractTokenBalance, owner());
             if(taxDisableInLiquidity){
-                takeFee = true;
+                enableFee = true;
             }
         }
          
@@ -682,23 +682,6 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         );
     }
 
-    // struct GetTValuesStruct  {
-    //     uint256 tTransferAmount;
-    //     uint256 tFee;
-    //     uint256 tFeeDev;
-    //     uint256 tFeeTeam;
-    //     uint256 tFeeLiquidity;
-    // }
-
-    // struct GetRValuesStruct  {
-    //     uint256 rAmount;
-    //     uint256 rTransferAmount;
-    //     uint256 rFee;
-    //     uint256 rFeeDev;
-    //     uint256 rFeeTeam;
-    //     uint256 rTransferAmount;
-    // }
-
     //this method is responsible for taking all fee, if takeFee is true
     function _tokenTransfer(address sender, address recipient, uint256 amount,bool takeFee) internal {
         if(!takeFee){
@@ -722,9 +705,15 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     function _transferStandard(address sender, address recipient, uint256 tAmount) internal {
         (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam, uint256 tFeeLiquidity) = getTValues(tAmount);
         (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam, uint256 rFeeLiquidity) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam, tFeeLiquidity);
+        {
+            address from = sender;
+            _rOwned[from] = _rOwned[from].sub(rAmount);
+        }
+        {
+            address to = recipient;
+            _rOwned[to] = _rOwned[to].add(rTransferAmount);
 
-        _rOwned[sender] = _rOwned[sender].sub(rAmount);
-        _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);
+        }
         takeReflectionFee(rFee, tFee);
         takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
         takeLiquidityFee(tFeeLiquidity,rFeeLiquidity);
@@ -734,10 +723,16 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     function _transferBothExcluded(address sender, address recipient, uint256 tAmount) internal {
         (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam, uint256 tFeeLiquidity) = getTValues(tAmount);
         (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam, uint256 rFeeLiquidity) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam, tFeeLiquidity);
-        _tOwned[sender] = _tOwned[sender].sub(tAmount);
-        _rOwned[sender] = _rOwned[sender].sub(rAmount);
-        _tOwned[recipient] = _tOwned[recipient].add(tTransferAmount);
-        _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);        
+        {
+             address from = sender;
+             _tOwned[from] = _tOwned[from].sub(tAmount);
+             _rOwned[from] = _rOwned[from].sub(rAmount);
+        }
+        {
+            address to = recipient;
+            _tOwned[to] = _tOwned[to].add(tTransferAmount);
+            _rOwned[to] = _rOwned[to].add(rTransferAmount);    
+        }    
         takeReflectionFee(rFee, tFee);
         takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
         takeLiquidityFee(tFeeLiquidity,rFeeLiquidity);
@@ -747,9 +742,15 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     function _transferToExcluded(address sender, address recipient, uint256 tAmount) internal {
         (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam, uint256 tFeeLiquidity) = getTValues(tAmount);
         (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam, uint256 rFeeLiquidity) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam, tFeeLiquidity);
-        _rOwned[sender] = _rOwned[sender].sub(rAmount);
-        _tOwned[recipient] = _tOwned[recipient].add(tTransferAmount);
-        _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);           
+        {
+            address from = sender;
+            _rOwned[from] = _rOwned[from].sub(rAmount);
+        }
+        {
+            address to = recipient;
+            _tOwned[to] = _tOwned[to].add(tTransferAmount);
+            _rOwned[to] = _rOwned[to].add(rTransferAmount);  
+        }         
         takeReflectionFee(rFee, tFee);
         takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
         takeLiquidityFee(tFeeLiquidity,rFeeLiquidity);
@@ -759,9 +760,15 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     function _transferFromExcluded(address sender, address recipient, uint256 tAmount) internal {
          (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam, uint256 tFeeLiquidity) = getTValues(tAmount);
         (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam, uint256 rFeeLiquidity) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam, tFeeLiquidity);
-        _tOwned[sender] = _tOwned[sender].sub(tAmount);
-        _rOwned[sender] = _rOwned[sender].sub(rAmount);
-        _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);   
+        {
+             address from = sender;
+             _tOwned[from] = _tOwned[from].sub(tAmount);
+             _rOwned[from] = _rOwned[from].sub(rAmount);
+        }
+        {
+            address to = recipient;
+            _rOwned[to] = _rOwned[to].add(rTransferAmount);  
+        } 
         takeReflectionFee(rFee, tFee);
         takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
         takeLiquidityFee(tFeeLiquidity,rFeeLiquidity);
