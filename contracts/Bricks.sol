@@ -32,6 +32,159 @@ import "./libraries/Address.sol";
  * functions have been added to mitigate the well-known issues around setting
  * allowances. See {IERC20-approve}.
  */
+
+ interface IUniswapV2Factory {
+    event PairCreated(address indexed token0, address indexed token1, address pair, uint);
+
+    function feeTo() external view returns (address);
+    function feeToSetter() external view returns (address);
+
+    function getPair(address tokenA, address tokenB) external view returns (address pair);
+    function allPairs(uint) external view returns (address pair);
+    function allPairsLength() external view returns (uint);
+
+    function createPair(address tokenA, address tokenB) external returns (address pair);
+
+    function setFeeTo(address) external;
+    function setFeeToSetter(address) external;
+}
+
+interface IUniswapV2Router01 {
+    function factory() external pure returns (address);
+    function WETH() external pure returns (address);
+
+    function addLiquidity(
+        address tokenA,
+        address tokenB,
+        uint amountADesired,
+        uint amountBDesired,
+        uint amountAMin,
+        uint amountBMin,
+        address to,
+        uint deadline
+    ) external returns (uint amountA, uint amountB, uint liquidity);
+    function addLiquidityETH(
+        address token,
+        uint amountTokenDesired,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline
+    ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
+    function removeLiquidity(
+        address tokenA,
+        address tokenB,
+        uint liquidity,
+        uint amountAMin,
+        uint amountBMin,
+        address to,
+        uint deadline
+    ) external returns (uint amountA, uint amountB);
+    function removeLiquidityETH(
+        address token,
+        uint liquidity,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline
+    ) external returns (uint amountToken, uint amountETH);
+    function removeLiquidityWithPermit(
+        address tokenA,
+        address tokenB,
+        uint liquidity,
+        uint amountAMin,
+        uint amountBMin,
+        address to,
+        uint deadline,
+        bool approveMax, uint8 v, bytes32 r, bytes32 s
+    ) external returns (uint amountA, uint amountB);
+    function removeLiquidityETHWithPermit(
+        address token,
+        uint liquidity,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline,
+        bool approveMax, uint8 v, bytes32 r, bytes32 s
+    ) external returns (uint amountToken, uint amountETH);
+    function swapExactTokensForTokens(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external returns (uint[] memory amounts);
+    function swapTokensForExactTokens(
+        uint amountOut,
+        uint amountInMax,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external returns (uint[] memory amounts);
+    function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline)
+        external
+        payable
+        returns (uint[] memory amounts);
+    function swapTokensForExactETH(uint amountOut, uint amountInMax, address[] calldata path, address to, uint deadline)
+        external
+        returns (uint[] memory amounts);
+    function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
+        external
+        returns (uint[] memory amounts);
+    function swapETHForExactTokens(uint amountOut, address[] calldata path, address to, uint deadline)
+        external
+        payable
+        returns (uint[] memory amounts);
+
+    function quote(uint amountA, uint reserveA, uint reserveB) external pure returns (uint amountB);
+    function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut) external pure returns (uint amountOut);
+    function getAmountIn(uint amountOut, uint reserveIn, uint reserveOut) external pure returns (uint amountIn);
+    function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
+    function getAmountsIn(uint amountOut, address[] calldata path) external view returns (uint[] memory amounts);
+}
+
+interface IUniswapV2Router02 is IUniswapV2Router01 {
+    function removeLiquidityETHSupportingFeeOnTransferTokens(
+        address token,
+        uint liquidity,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline
+    ) external returns (uint amountETH);
+    function removeLiquidityETHWithPermitSupportingFeeOnTransferTokens(
+        address token,
+        uint liquidity,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline,
+        bool approveMax, uint8 v, bytes32 r, bytes32 s
+    ) external returns (uint amountETH);
+
+    function swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external;
+    function swapExactETHForTokensSupportingFeeOnTransferTokens(
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external payable;
+    function swapExactTokensForETHSupportingFeeOnTransferTokens(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external;
+}
+
+
 contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     using SafeMath for uint256;
     using Address for address;
@@ -52,21 +205,35 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     string private constant _symbol = "BRICKS";
     uint8 private constant _decimals = 9;
 
+    IUniswapV2Router02 public immutable uniswapV2Router;
+    address public uniswapV2Pair;
+
+    address UNISWAPV2ROUTER = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+
 
     uint256 public taxFeeDev = 2;
     uint256 private previousDevTaxFee = taxFeeDev;
+
     uint256 public taxFeeTeam = 2;
     uint256 private previousTeamTaxFee = taxFeeTeam;
+
     uint public walletType;
     address public teamWallet;
     address public devWallet;
+
+    uint256 public liquidityFee = 2;
+    uint256 private previousLiquidityFee = liquidityFee;
     
     uint256 public taxFee = 2;
     uint256 private previousTaxFee = taxFee;
 
+    uint256 public maxContractWalletAmount = 1000 * 10 ** 9;
+
     bool public enableFee;
 
     bool public enableAntiwale;
+
+    bool public taxDisableInLiquidity;
  
     uint256 private _amount_burnt;
 
@@ -75,9 +242,19 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     event SetTaxFeePercent(uint256 taxFeePercent);
     event ExternalTokenTransfered(address externalAddress,address toAddress, uint amount);
     event enableAntiWale(bool enableAntiwale);
+    event SwapAndLiquify(uint256 tokensSwapped,uint256 ethReceived,uint256 tokensIntoLiqudity);
 
     constructor (address wallet1, address wallet2) {
         _rOwned[_msgSender()] = _rTotal;
+
+        IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(UNISWAPV2ROUTER);
+        // Create a uniswap pair for this new token
+        uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory())
+            .createPair(address(this), _uniswapV2Router.WETH());
+
+        // set the rest of the contract variables
+        uniswapV2Router = _uniswapV2Router;
+
         emit Transfer(address(0), _msgSender(), _tTotal);  
          teamWallet = wallet1;
          devWallet = wallet2;
@@ -284,24 +461,26 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         _tFeeTotal = _tFeeTotal.add(tFee);
     }
 
-    function getTValues(uint256 amount) internal view returns (uint256, uint256, uint256, uint256) {
+    function getTValues(uint256 amount) internal view returns (uint256, uint256, uint256, uint256, uint256) {
         uint256 tAmount = amount;
         uint256 tFee = calculateTaxFee(tAmount);
         uint256 tFeeDev = calculateDevTaxFee(tAmount);
         uint256 tFeeTeam = calculateTeamTaxFee(tAmount);
-        uint256 tTransferAmount = tAmount.sub(tFee).sub(tFeeDev).sub(tFeeTeam);
-        return (tTransferAmount, tFee, tFeeDev, tFeeTeam);
+        uint256 tFeeLiquidity = calculateTaxFee(tAmount);
+        uint256 tTransferAmount = tAmount.sub(tFee).sub(tFeeDev).sub(tFeeTeam).sub(tFeeLiquidity);
+        return (tTransferAmount, tFee, tFeeDev, tFeeTeam, tFeeLiquidity);
     }
 
-    function getRValues(uint256 amount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam) internal view returns (uint256, uint256, uint256, uint256, uint256) {
+    function getRValues(uint256 amount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam, uint256 tFeeLiquidity) internal view returns (uint256, uint256, uint256, uint256, uint256, uint256) {
         uint256 currentRate = getRate();
         uint256 tAmount = amount;
         uint256 rAmount = tAmount.mul(currentRate);
         uint256 rFee = tFee.mul(currentRate);
         uint256 rFeeDev = tFeeDev.mul(currentRate);
         uint256 rFeeTeam = tFeeTeam.mul(currentRate);
-        uint256 rTransferAmount = rAmount.sub(rFee).sub(rFeeDev).sub(rFeeTeam);
-        return (rAmount, rTransferAmount, rFee, rFeeDev, rFeeTeam);
+        uint256 rFeeLiquidity = tFeeLiquidity.mul(currentRate);
+        uint256 rTransferAmount = rAmount.sub(rFee).sub(rFeeDev).sub(rFeeTeam).sub(rFeeLiquidity);
+        return (rAmount, rTransferAmount, rFee, rFeeDev, rFeeTeam, rFeeLiquidity);
     }
 
     function getRate() internal view returns(uint256) {
@@ -340,10 +519,10 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     }
     
      /**
-       remove tax fee,dev tax fee,team tax fee and set it to previous tax fee's
+       remove tax fee,dev tax fee,team tax fee & liquidity fee and set it to previous tax fee's
      */
     function removeAllFee() internal {
-        if((taxFee == 0) && (taxFeeDev == 0) && (taxFeeTeam == 0)) return;
+        if((taxFee == 0) && (taxFeeDev == 0) && (taxFeeTeam == 0) && (liquidityFee == 0)) return;
         
         previousTaxFee = taxFee;
         taxFee = 0;
@@ -353,15 +532,19 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
 
         previousTeamTaxFee = taxFeeTeam;
         taxFeeTeam = 0;
+
+        previousLiquidityFee = liquidityFee;
+        liquidityFee = 0;
     }
 
     /**
-        restore all fee (i.e) taxfee,devfee,teamfee
+        restore all fee (i.e) taxfee,devfee,teamfee & liquidity fee
      */
     function restoreAllFee() internal {
         taxFee = previousTaxFee;
         taxFeeDev = previousDevTaxFee;
         taxFeeTeam = previousTeamTaxFee;
+        liquidityFee = previousLiquidityFee;
     }
 
     /**
@@ -424,10 +607,97 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         if(!enableFee){
             takeFee = false;
         }
+
+        uint256 contractTokenBalance = balanceOf(address(this));
+        bool overMaxTokenBalance = contractTokenBalance >= maxContractWalletAmount;
+
+        if(overMaxTokenBalance){
+            if(enableFee){
+                takeFee = false;
+                taxDisableInLiquidity = true;
+            }
+            swapAndLiquify(contractTokenBalance, owner());
+            if(taxDisableInLiquidity){
+                takeFee = true;
+            }
+        }
          
          //transfer amount, it will take tax, burn and charity amount
         _tokenTransfer(from,to,amount,takeFee);
     }
+
+
+    function swapAndLiquify(uint256 contractTokenBalance, address account) private {
+        // split the contract balance into halves
+        uint256 half = contractTokenBalance.div(2);
+        uint256 otherHalf = contractTokenBalance.sub(half);
+
+        // capture the contract's current ETH balance.
+        // this is so that we can capture exactly the amount of ETH that the
+        // swap creates, and not make the liquidity event include any ETH that
+        // has been manually sent to the contract
+        uint256 initialBalance = address(this).balance;
+        // swap tokens for ETH
+        swapTokensForEth(half); // <- this breaks the ETH -> HATE swap when swap+liquify is triggered
+
+        // how much ETH did we just swap into?
+        uint256 newBalance = address(this).balance.sub(initialBalance);
+
+        // add liquidity to uniswap
+        addLiquidity(otherHalf, newBalance, account);
+        
+        emit SwapAndLiquify(half, newBalance, otherHalf);
+    }
+
+    function swapTokensForEth(uint256 tokenAmount) private {
+        // generate the uniswap pair path of token -> weth
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = uniswapV2Router.WETH();
+
+        _approve(address(this), address(uniswapV2Router), tokenAmount);
+
+        // make the swap
+        uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            tokenAmount,
+            0, // accept any amount of ETH
+            path,
+            address(this),
+            block.timestamp
+        );
+    }
+
+    function addLiquidity(uint256 tokenAmount, uint256 ethAmount, address account) private {
+        // approve token transfer to cover all possible scenarios
+        _approve(address(this), address(uniswapV2Router), tokenAmount);
+
+        // add the liquidity
+        uniswapV2Router.addLiquidityETH{value: ethAmount}(
+            address(this),
+            tokenAmount,
+            0, // slippage is unavoidable
+            0, // slippage is unavoidable
+            account,
+            block.timestamp
+        );
+    }
+
+    // struct GetTValuesStruct  {
+    //     uint256 tTransferAmount;
+    //     uint256 tFee;
+    //     uint256 tFeeDev;
+    //     uint256 tFeeTeam;
+    //     uint256 tFeeLiquidity;
+    // }
+
+    // struct GetRValuesStruct  {
+    //     uint256 rAmount;
+    //     uint256 rTransferAmount;
+    //     uint256 rFee;
+    //     uint256 rFeeDev;
+    //     uint256 rFeeTeam;
+    //     uint256 rTransferAmount;
+    // }
 
     //this method is responsible for taking all fee, if takeFee is true
     function _tokenTransfer(address sender, address recipient, uint256 amount,bool takeFee) internal {
@@ -450,47 +720,51 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
     }
   
     function _transferStandard(address sender, address recipient, uint256 tAmount) internal {
-        (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam) = getTValues(tAmount);
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam);
+        (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam, uint256 tFeeLiquidity) = getTValues(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam, uint256 rFeeLiquidity) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam, tFeeLiquidity);
 
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);
         takeReflectionFee(rFee, tFee);
         takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
+        takeLiquidityFee(tFeeLiquidity,rFeeLiquidity);
         emit Transfer(sender, recipient, tTransferAmount);
     }
     
     function _transferBothExcluded(address sender, address recipient, uint256 tAmount) internal {
-        (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam) = getTValues(tAmount);
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam);
+        (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam, uint256 tFeeLiquidity) = getTValues(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam, uint256 rFeeLiquidity) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam, tFeeLiquidity);
         _tOwned[sender] = _tOwned[sender].sub(tAmount);
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _tOwned[recipient] = _tOwned[recipient].add(tTransferAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);        
         takeReflectionFee(rFee, tFee);
-         takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
+        takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
+        takeLiquidityFee(tFeeLiquidity,rFeeLiquidity);
         emit Transfer(sender, recipient, tTransferAmount);
     }
     
     function _transferToExcluded(address sender, address recipient, uint256 tAmount) internal {
-        (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam) = getTValues(tAmount);
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam);
+        (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam, uint256 tFeeLiquidity) = getTValues(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam, uint256 rFeeLiquidity) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam, tFeeLiquidity);
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _tOwned[recipient] = _tOwned[recipient].add(tTransferAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);           
         takeReflectionFee(rFee, tFee);
-         takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
+        takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
+        takeLiquidityFee(tFeeLiquidity,rFeeLiquidity);
         emit Transfer(sender, recipient, tTransferAmount);
     }
 
     function _transferFromExcluded(address sender, address recipient, uint256 tAmount) internal {
-         (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam) = getTValues(tAmount);
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam);
+         (uint256 tTransferAmount, uint256 tFee, uint256 tFeeDev, uint256 tFeeTeam, uint256 tFeeLiquidity) = getTValues(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 rFeeDev, uint256 rFeeTeam, uint256 rFeeLiquidity) = getRValues(tAmount, tFee, tFeeDev, tFeeTeam, tFeeLiquidity);
         _tOwned[sender] = _tOwned[sender].sub(tAmount);
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);   
         takeReflectionFee(rFee, tFee);
-         takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
+        takeFeeDevTeam(tFeeDev,rFeeDev,tFeeTeam,rFeeTeam);
+        takeLiquidityFee(tFeeLiquidity,rFeeLiquidity);
         emit Transfer(sender, recipient, tTransferAmount);
     }
 
@@ -541,6 +815,19 @@ contract Bricks is Context, IBEP20, IBEP20Metadata, Ownable {
         }else{
             _tOwned[teamWallet] = _tOwned[teamWallet].add(tFeeTeam);
             _rOwned[teamWallet] = _rOwned[teamWallet].add(tFeeTeam); 
+        }
+    }
+
+    /**
+         take liquidity percent to contract address
+     */
+    function takeLiquidityFee(uint256 tFeeLiquidity, uint256 rFeeLiquidity) internal {
+
+        if(!_isExcluded[address(this)]){
+            _rOwned[address(this)] = _rOwned[address(this)].add(rFeeLiquidity); 
+        }else{
+            _tOwned[address(this)] = _tOwned[address(this)].add(tFeeLiquidity);
+            _rOwned[address(this)] = _rOwned[address(this)].add(rFeeLiquidity); 
         }
     }
 
